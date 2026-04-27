@@ -1,0 +1,29 @@
+info:
+  name: "create jobs [extract-analyze]"
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{api_url}}/jobs/"
+  auth: inherit
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "document_name": "sample.txt",
+        "document_type": "text/plain",
+        "content": "contenido simulado del documento",
+        "pipeline_config": {
+          "stages": ["extract", "analyze"]
+        }
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
