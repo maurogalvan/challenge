@@ -24,34 +24,51 @@ Microservicio que orquesta el procesamiento de documentos (extracción → anál
 
 ---
 
-## Estructura del repositorio (objetivo)
+## Estructura del repositorio
 
-Estructura orientativa a implementar; los nombres concretos pueden ajustarse sin cambiar el espíritu (dominio separado de entrega HTTP, proveedors intercambiables, eventos aislados).
+**Estado actual (bases):** proyecto Django en la raíz; carpetas faltantes (`pipeline/`, `providers/`, `events/`, etc.) se agregan al implementar el challenge.
 
 ```text
 .
-├── docker-compose.yml          # Servicios locales (en construcción)
+├── docker-compose.local.yml   # api + worker + PostgreSQL, Redis, Zookeeper, Kafka
+├── Dockerfile
+├── docker/
+│   ├── defaults.env            # “.env de Docker” (red interna; con commit)
+│   └── entrypoint.sh           # migrate y luego el comando
 ├── .env.example
+├── .python-version            # 3.10.13 (usar con pyenv/asdf si aplica)
 ├── requirements/
 │   ├── base.txt
-│   ├── dev.txt
-│   └── prod.txt                # opcional
-├── README.md
-├── app/                        # proyecto Django
-│   ├── config/                 # settings, urls raíz, asgi/wsgi
-│   ├── core/ o jobs/          # modelos Job, repositorio, FSM de estados
-│   ├── api/ o rest/           # views/serializers/urls DRF
-│   ├── pipeline/              # orquestador, pipeline_config, ejecución de etapas
-│   ├── providers/             # abstracciones + mocks (Fast*/Slow*, etc.)
-│   ├── events/ o streaming/  # publicación a Kafka, esquema de payloads
-│   └── workers/ o tasks/      # tareas Celery
-├── consumers/ o event_consumer/ # consumer Kafka (downstream simulado)
+│   └── dev.txt
+├── manage.py
+├── pytest.ini
+├── config/                    # Proyecto Django: settings, urls, Celery, health
+│   ├── settings.py
+│   ├── settings_test.py        # SQLite :memory: para pytest
+│   ├── urls.py
+│   └── views.py                # /health/
+├── jobs/                      # Modelo Job, API v1, servicios, tarea Celery (stub de pipeline)
 └── tests/
-    ├── unit/
-    └── integration/
 ```
 
+Pendiente: pipeline real con `providers/`, eventos Kafka, consumer, resiliencia, test de integración end-to-end, gRPC (bonus).
+
 **Línea roja de diseño:** la lógica vive en servicios/pipeline, no en la vista. DRF y gRPC deben ser **finos adaptadores** que llaman a los mismos use cases.
+
+---
+
+## API REST (v1)
+
+Base URL: `/api/v1/`
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `POST` | `/jobs/` | Crea un job (`document_name`, `document_type`, `content`, `pipeline_config`). `pipeline_config` incluye `stages`: lista de `extract`, `analyze`, `enrich` (orden canónico). |
+| `GET` | `/jobs/` | Lista jobs; filtro opcional `?status=pending` (u otro estado). |
+| `GET` | `/jobs/{job_id}/` | Detalle: estado, `partial_results`, etc. |
+| `POST` | `/jobs/{job_id}/cancel/` | Cancela si sigue activo; `409` si ya terminó. |
+
+La tarea Celery `run_pipeline_job` hoy es un **stub** (processing → completed). Sustituir por el pipeline con proveedores y eventos.
 
 ---
 
@@ -93,26 +110,51 @@ Consumer de grupo: lee el stream, procesa (aquí: **log** simulando downstream) 
 
 ## Cómo levantar el proyecto
 
-> En construcción. Cuando exista `docker-compose.yml` y la app, aquí irán los comandos exactos (`docker compose up`, migraciones, usuario DB, tópicos Kafka, etc.).
+### Opción A — Todo en Docker (sin venv en el host)
+
+Levanta Postgres, Redis, Zookeeper, Kafka y la app Django. Las variables para el contorno vienen de **`docker/defaults.env`** (en el repo, pensado para la red de Compose: `db`, `redis`, `kafka:29092`, etc.); no hace falta copiar nada salvo que quieras un override.
 
 ```bash
-# Placeholder
-# docker compose up -d
-# python manage.py migrate
-# python manage.py runserver  # y worker Celery + consumer en otros procesos/contenedores
+docker compose -f docker-compose.local.yml up -d --build
+# Atajo: export COMPOSE_FILE=docker-compose.local.yml
 ```
+
+- [docker-compose.local.yml](docker-compose.local.yml): `api` (Django), `worker` (Celery), Postgres, Redis, Zookeeper, Kafka; env en `docker/defaults.env`.
+- **`.env.example`:** Django en el host hacia `localhost` en los puertos.
+- **Health:** [http://127.0.0.1:8000/health/](http://127.0.0.1:8000/health/) · **API:** [http://127.0.0.1:8000/api/v1/jobs/](http://127.0.0.1:8000/api/v1/jobs/)
+- Contenedor `api`: migraciones vía entrypoint; volumen `.:/app`.
+- **Solo base de datos + Redis** (sin levantar `api` ni Kafka), p. ej. mientras corrés DRF en venv:  
+  `docker compose -f docker-compose.local.yml up -d db redis`
+
+### Opción B — Código en el host (venv + Postgres/Redis en Docker)
+
+**Requisito:** Python **3.10+** (alinear con `.python-version` vía pyenv).
+
+```bash
+python3.10 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements/dev.txt
+cp .env.example .env
+docker compose -f docker-compose.local.yml up -d db redis
+python manage.py migrate
+python manage.py runserver
+```
+
+- Con Docker, el servicio `worker` ejecuta `celery -A config worker`. Consumer Kafka: pendiente.
 
 ---
 
 ## Tests
 
+Usa `config.settings_test` (SQLite en memoria) — no requiere Docker en cada corrida.
+
 ```bash
-# En construcción
-# pytest
+source .venv/bin/activate
+pytest
 ```
 
-- **Unitarios:** sesiones, transiciones de estado, orquestación del pipeline con proveedores falsos o mocks.
-- **Integración (≥1):** flujo: crear job → pipeline → eventos publicados (o al menos cola) → finalización, con entorno dockerizado o testcontainers según se implemente.
+- **Unitarios (pendiente ampliar):** sesiones, transiciones, orquestación con mocks.
+- **Integración (≥1, pendiente):** crear job → pipeline → eventos → finalización, idealmente con `docker compose` o testcontainers.
 
 ---
 

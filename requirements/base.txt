@@ -1,0 +1,10 @@
+# Python 3.10+
+Django>=4.2,<5.1
+djangorestframework>=3.14
+psycopg2-binary>=2.9
+python-dotenv>=1.0
+celery[redis]>=5.3
+
+# Event streaming (añadir al integrar Kafka en el proyecto)
+# confluent-kafka>=2.3
+# o kafka-python; según implementación del producer/consumer
