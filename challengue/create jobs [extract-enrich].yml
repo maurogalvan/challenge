@@ -1,7 +1,7 @@
 info:
-  name: "create jobs [extract-enrich]"
+  name: "create jobs [full pipeline]"
   type: http
-  seq: 5
+  seq: 6
 
 http:
   method: POST
@@ -18,7 +18,12 @@ http:
         "document_type": "text/plain",
         "content": "contenido simulado del documento",
         "pipeline_config": {
-          "stages": ["extract", "enrich"]
+          "stages": ["extract", "analyze", "enrich"],
+          "provider_overrides": {
+            "extract": "fast",
+            "analyze": "slow",
+            "enrich": "fast"
+          }
         }
       }
 
@@ -27,3 +32,6 @@ settings:
   timeout: 0
   followRedirects: true
   maxRedirects: 5
+
+docs: |-
+  `extract`+`enrich` sin `analyze` en medio no es válido; este request es el pipeline completo.

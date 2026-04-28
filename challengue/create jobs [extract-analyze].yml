@@ -1,7 +1,7 @@
 info:
   name: "create jobs [extract-analyze]"
   type: http
-  seq: 4
+  seq: 5
 
 http:
   method: POST
@@ -18,7 +18,11 @@ http:
         "document_type": "text/plain",
         "content": "contenido simulado del documento",
         "pipeline_config": {
-          "stages": ["extract", "analyze"]
+          "stages": ["extract", "analyze"],
+          "provider_overrides": {
+            "extract": "fast",
+            "analyze": "slow"
+          }
         }
       }
 

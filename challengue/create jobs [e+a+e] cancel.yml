@@ -1,7 +1,7 @@
 info:
-  name: "create jobs [full] all fast"
+  name: "create jobs [e+a+e] all slow (cancelar)"
   type: http
-  seq: 7
+  seq: 9
 
 http:
   method: POST
@@ -14,15 +14,15 @@ http:
     type: json
     data: |-
       {
-        "document_name": "sample.txt",
+        "document_name": "slow-cancel.txt",
         "document_type": "text/plain",
-        "content": "contenido simulado del documento",
+        "content": "texto largo para dar tiempo a cancelar antes de que termine",
         "pipeline_config": {
           "stages": ["extract", "analyze", "enrich"],
           "provider_overrides": {
-            "extract": "fast",
-            "analyze": "fast",
-            "enrich": "fast"
+            "extract": "slow",
+            "analyze": "slow",
+            "enrich": "slow"
           }
         }
       }
@@ -34,4 +34,4 @@ settings:
   maxRedirects: 5
 
 docs: |-
-  `analyze`+`enrich` sin `extract` no es válido; se usa el prefijo de tres etapas.
+  Guía E: luego hacé GET hasta ver `processing` y POST `.../cancel/`. Tarda ~1.5s+ en worker real.
