@@ -65,6 +65,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      kafka:
+        condition: service_started
     volumes:
       - .:/app
 
@@ -80,8 +82,26 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      kafka:
+        condition: service_started
     volumes:
       - .:/app
+
+  kafka_consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - ./docker/defaults.env
+    command: ["python", "manage.py", "run_kafka_consumer"]
+    depends_on:
+      db:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    volumes:
+      - .:/app
+    restart: on-failure
 
 volumes:
   postgres_data:

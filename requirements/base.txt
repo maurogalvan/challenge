@@ -5,6 +5,5 @@ psycopg2-binary>=2.9
 python-dotenv>=1.0
 celery[redis]>=5.3
 
-# Event streaming (añadir al integrar Kafka en el proyecto)
-# confluent-kafka>=2.3
-# o kafka-python; según implementación del producer/consumer
+# Event streaming (Apache Kafka: producer + consumer)
+kafka-python>=2.0,<3

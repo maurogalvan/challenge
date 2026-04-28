@@ -107,3 +107,7 @@ CELERY_TIMEZONE = TIME_ZONE
 
 KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 KAFKA_TOPIC_JOBS = os.environ.get("KAFKA_TOPIC_JOBS", "job-events")
+KAFKA_ENABLED = os.environ.get("KAFKA_ENABLED", "true").lower() in ("1", "true", "yes")
+KAFKA_CONSUMER_GROUP = os.environ.get("KAFKA_CONSUMER_GROUP", "downstream-processors")
+# Identificador para logs del broker (productor y consumer distinguen instancias)
+KAFKA_CLIENT_ID_PREFIX = os.environ.get("KAFKA_CLIENT_ID_PREFIX", "gateway")

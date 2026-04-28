@@ -106,6 +106,22 @@ def create_job(
         pipeline_config=cfg,
         status=JobStatus.PENDING,
     )
+
+    def _emit_created() -> None:
+        from . import event_stream
+
+        event_stream.publish_job_event(
+            str(job.id),
+            "job.created",
+            {
+                "document_name": document_name,
+                "document_type": document_type or "",
+                "pipeline_stages": list(cfg.get("stages") or []),
+                "content_length": len(content),
+            },
+        )
+
+    transaction.on_commit(_emit_created)
     return job
 
 
@@ -139,6 +155,15 @@ def request_cancel_job(job: Job) -> bool:
     job.status = JobStatus.CANCELLED
     job.save(update_fields=["status", "updated_at"])
     logger.info("Job %s cancelled at %s", job.pk, timezone.now())
+
+    jid = str(job.pk)
+
+    def _emit_cancelled() -> None:
+        from . import event_stream
+
+        event_stream.publish_job_event(jid, "job.cancelled", {})
+
+    transaction.on_commit(_emit_cancelled)
     return True
 
 

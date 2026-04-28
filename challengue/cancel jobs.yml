@@ -1,11 +1,11 @@
 info:
   name: cancel jobs
   type: http
-  seq: 11
+  seq: 12
 
 http:
   method: POST
-  url: "{{api_url}}/jobs/<job-id>/cancel/"
+  url: "{{api_url}}/jobs/{{job_id}}/cancel/"
   auth: inherit
 
 settings:

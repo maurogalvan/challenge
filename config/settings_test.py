@@ -16,4 +16,5 @@ DATABASES = {
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
 
-KAFKA_BOOTSTRAP_SERVERS = "localhost:0"  # no se usa en tests básicos
+KAFKA_BOOTSTRAP_SERVERS = "localhost:0"
+KAFKA_ENABLED = False  # tests sin broker; publicación es no-op

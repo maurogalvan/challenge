@@ -26,11 +26,11 @@ Microservicio que orquesta el procesamiento de documentos (extracción → anál
 
 ## Estructura del repositorio
 
-**Estado actual:** Django + API v1 + Celery + pipeline con `jobs/pipeline/` y `jobs/providers/` (mocks fast/slow). Pendiente principal: **eventos Kafka** (productor + consumer), resiliencia del broker y test de integración extremo a extremo.
+**Estado actual:** Django + API v1 + Celery + pipeline + **Kafka** (`jobs/event_stream.py`: productor; `run_kafka_consumer` consumer con group id y commit manual). Pendiente principal: test de integración e2e con broker real y (opcional) más resiliencia ante broker caído.
 
 ```text
 .
-├── docker-compose.local.yml   # api + worker + PostgreSQL, Redis, Zookeeper, Kafka
+├── docker-compose.local.yml   # api + worker + kafka_consumer + Postgres, Redis, ZK, Kafka
 ├── Dockerfile
 ├── docker/
 │   ├── defaults.env            # “.env de Docker” (red interna; con commit)
@@ -47,11 +47,11 @@ Microservicio que orquesta el procesamiento de documentos (extracción → anál
 │   ├── settings_test.py        # SQLite :memory: para pytest
 │   ├── urls.py
 │   └── views.py                # /health/
-├── jobs/                      # Modelo Job, API v1, servicios, pipeline, providers, tarea Celery
+├── jobs/                      # Job, API, servicios, pipeline, providers, event_stream, Celery
 └── tests/
 ```
 
-Pendiente: eventos Kafka (productor en worker + consumer con group), resiliencia ante fallo del broker, al menos un test de integración completo, gRPC (bonus).
+Pendiente: test de integración con Kafka embebido o Compose; resiliencia extra (outbox, circuit breaker); gRPC (bonus).
 
 **Línea roja de diseño:** la lógica vive en servicios/pipeline, no en la vista. DRF y gRPC deben ser **finos adaptadores** que llaman a los mismos use cases.
 
@@ -70,7 +70,7 @@ Base URL: `/api/v1/`
 
 **Regla de etapas:** no se admite `["enrich"]` ni `["extract","enrich"]` sin `analyze` intermedio. Cada etapa recibe la salida de la anterior; no hay “análisis implícito” ni enriquecimiento sin análisis explícito en `stages`.
 
-El worker Celery ejecuta `run_pipeline_job` → `run_job_pipeline` (orquesta proveedores por `stages`). Faltan eventos Kafka.
+El worker Celery ejecuta `run_pipeline_job` → `run_job_pipeline` (orquesta proveedores por `stages`). Los eventos `job.*` se publican a Kafka (`KAFKA_TOPIC_JOBS`, ver `jobs/event_stream.py`).
 
 ---
 
@@ -98,15 +98,17 @@ Cada evento incluye al menos: `job_id`, `timestamp`, `event_type`, `payload`.
 | `job.failed` | Falla en etapa o sistema |
 | `job.cancelled` | Job cancelado |
 
-Consumer de grupo: lee el stream, procesa (aquí: **log** simulando downstream) y hace **ack** vía avance de offset (semántica del consumidor de Kafka).
+Consumer de grupo (`KAFKA_CONSUMER_GROUP`, p. ej. `downstream-processors`): comando `python manage.py run_kafka_consumer` — lee el topic, **log** simula downstream y hace **commit manual** tras cada mensaje (ack vía offset).
+
+Variables: `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_TOPIC_JOBS`, `KAFKA_ENABLED` (en tests va en `false` para no requerir broker).
 
 ---
 
 ## Resiliencia (README + código)
 
 - **Proveedor:** error/timeout de etapa → no se pierde el trabajo previo; job en `failed` y evento acorde.
-- **Publicación a Kafka (breve caída del broker):** al menos **una** estrategia (p. ej. reintentos con backoff o patrón outbox simplificado), justificada en esta sección cuando esté implementada.
-- (Opcional en texto) listado de riesgos no cubiertos por tiempo.
+- **Publicación a Kafka:** **reintentos con backoff** corto (hasta 3 intentos) antes de registrar error y seguir (el job en DB no se revierte; en escenarios productivos se usaría outbox o cola local — fuera de alcance del challenge).
+- (Opcional) sin broker: arrancar Compose sin Kafka y `KAFKA_ENABLED=false` para desarrollo offline del resto del stack.
 
 ---
 
@@ -121,7 +123,7 @@ docker compose -f docker-compose.local.yml up -d --build
 # Atajo: export COMPOSE_FILE=docker-compose.local.yml
 ```
 
-- [docker-compose.local.yml](docker-compose.local.yml): `api` (Django), `worker` (Celery), Postgres, Redis, Zookeeper, Kafka; env en `docker/defaults.env`.
+- [docker-compose.local.yml](docker-compose.local.yml): `api`, `worker`, `kafka_consumer` (`run_kafka_consumer`), Postgres, Redis, Zookeeper, Kafka; env en `docker/defaults.env`.
 - **`.env.example`:** Django en el host hacia `localhost` en los puertos.
 - **Health:** [http://127.0.0.1:8000/health/](http://127.0.0.1:8000/health/) · **API:** [http://127.0.0.1:8000/api/v1/jobs/](http://127.0.0.1:8000/api/v1/jobs/)
 - Contenedor `api`: migraciones vía entrypoint; volumen `.:/app`.
@@ -137,12 +139,12 @@ python3.10 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements/dev.txt
 cp .env.example .env
-docker compose -f docker-compose.local.yml up -d db redis
+docker compose -f docker-compose.local.yml up -d db redis kafka
 python manage.py migrate
 python manage.py runserver
 ```
 
-- Con Docker, el servicio `worker` ejecuta `celery -A config worker`. Consumer Kafka: pendiente.
+- Con Docker, el `worker` ejecuta Celery. Para eventos: mismo Compose incluye `kafka_consumer` o, en el host, `KAFKA_BOOTSTRAP_SERVERS=localhost:9092` y `python manage.py run_kafka_consumer` en otra terminal.
 
 ---
 
@@ -155,8 +157,8 @@ source .venv/bin/activate
 pytest
 ```
 
-- **Unitarios:** servicios (`normalize` de `pipeline_config`, creación de job), orquestación del pipeline con mocks (éxito y fallo con parciales).
-- **Integración (≥1, pendiente):** flujo completo con publicación y consumo de eventos (p. ej. testcontainers Kafka o compose en CI).
+- **Unitarios:** servicios, pipeline, **envelope de eventos** y publicación con Kafka mockeado.
+- **Integración (≥1, pendiente):** un flujo con broker real (p. ej. testcontainers Kafka o job en CI contra Compose).
 
 ---
 
