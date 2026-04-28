@@ -63,12 +63,14 @@ Base URL: `/api/v1/`
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| `POST` | `/jobs/` | Crea un job (`document_name`, `document_type`, `content`, `pipeline_config`). `pipeline_config` incluye `stages`: lista de `extract`, `analyze`, `enrich` (orden canónico). |
-| `GET` | `/jobs/` | Lista jobs; filtro opcional `?status=pending` (u otro estado). |
-| `GET` | `/jobs/{job_id}/` | Detalle: estado, `partial_results`, etc. |
+| `POST` | `/jobs/` | Crea un job. `pipeline_config` incluye `stages` (no vacía) y **solo prefijos contiguos** del orden `extract` → `analyze` → `enrich` (por ejemplo `["extract"]`, `["extract","analyze"]`, `["extract","analyze","enrich"]`). Opcional: `provider_overrides` con `fast` o `slow` **solo para etapas listadas en `stages`**. |
+| `GET` | `/jobs/` | Lista jobs; filtro opcional `?status=…`. |
+| `GET` | `/jobs/{job_id}/` | Detalle: `partial_results.by_stage` con el resultado de cada etapa, `error_message` si `failed`. |
 | `POST` | `/jobs/{job_id}/cancel/` | Cancela si sigue activo; `409` si ya terminó. |
 
-La tarea Celery `run_pipeline_job` hoy es un **stub** (processing → completed). Sustituir por el pipeline con proveedores y eventos.
+**Regla de etapas:** no se admite `["enrich"]` ni `["extract","enrich"]` sin `analyze` intermedio. Cada etapa recibe la salida de la anterior; no hay “análisis implícito” ni enriquecimiento sin análisis explícito en `stages`.
+
+El worker Celery ejecuta `run_pipeline_job` → `run_job_pipeline` (orquesta proveedores por `stages`). Faltan eventos Kafka.
 
 ---
 

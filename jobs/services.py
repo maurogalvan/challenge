@@ -11,10 +11,36 @@ from .models import Job, JobStatus
 logger = logging.getLogger(__name__)
 
 STAGE_ORDER = ("extract", "analyze", "enrich")
+PROVIDER_SPEEDS = frozenset({"fast", "slow"})
 
 
 class JobTransitionError(ValueError):
     pass
+
+
+def _normalize_overrides(config: dict[str, Any]) -> dict[str, str] | None:
+    raw = config.get("provider_overrides")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("pipeline_config.provider_overrides must be an object")
+    for key in raw:
+        if key not in STAGE_ORDER:
+            raise ValueError(
+                f"Unknown key in provider_overrides: {key!r} "
+                f"(allowed: {', '.join(STAGE_ORDER)})"
+            )
+    out: dict[str, str] = {}
+    for stage in STAGE_ORDER:
+        if stage not in raw:
+            continue
+        v = raw[stage]
+        if not isinstance(v, str) or v.lower() not in PROVIDER_SPEEDS:
+            raise ValueError(
+                f"provider_overrides.{stage} must be 'fast' or 'slow'"
+            )
+        out[stage] = v.lower()
+    return out or None
 
 
 def normalize_pipeline_config(config: Any) -> dict[str, Any]:
@@ -25,20 +51,42 @@ def normalize_pipeline_config(config: Any) -> dict[str, Any]:
         raise ValueError("pipeline_config.stages is required")
     if not isinstance(raw_stages, list):
         raise ValueError("pipeline_config.stages must be a list")
+    if len(raw_stages) == 0:
+        raise ValueError("pipeline_config.stages must contain at least one stage")
     allowed = set(STAGE_ORDER)
     for s in raw_stages:
         if not isinstance(s, str) or s not in allowed:
             raise ValueError(
                 f"Invalid stage {s!r}. Use only: {', '.join(STAGE_ORDER)}"
             )
-    pos = {name: i for i, name in enumerate(STAGE_ORDER)}
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for s in sorted(raw_stages, key=lambda x: pos[x]):
-        if s not in seen:
-            seen.add(s)
-            ordered.append(s)
-    out: dict[str, Any] = {**config, "stages": ordered}
+    wanted = {s for s in raw_stages if isinstance(s, str)}
+    ordered = [s for s in STAGE_ORDER if s in wanted]
+    if not ordered:
+        raise ValueError("pipeline_config.stages must contain at least one valid stage")
+    k = len(ordered)
+    prefix = list(STAGE_ORDER)[:k]
+    if ordered != prefix:
+        raise ValueError(
+            "pipeline_config.stages must be a contiguous prefix of the pipeline: "
+            "['extract'], ['extract', 'analyze'], or "
+            "['extract', 'analyze', 'enrich'] (order is normalized). "
+            f"Got a non-prefix set equivalent to {ordered!r}."
+        )
+    ovr = _normalize_overrides(config)
+    if ovr:
+        for key in ovr:
+            if key not in ordered:
+                raise ValueError(
+                    f"provider_overrides.{key} is not applicable to stages {ordered!r}"
+                )
+    base = {
+        k: v
+        for k, v in config.items()
+        if k not in ("stages", "provider_overrides")
+    }
+    out: dict[str, Any] = {**base, "stages": ordered}
+    if ovr is not None:
+        out["provider_overrides"] = ovr
     return out
 
 

@@ -1,5 +1,5 @@
 info:
-  name: "create jobs [extract]"
+  name: "create jobs [extract] slow"
   type: http
   seq: 1
 
@@ -16,9 +16,10 @@ http:
       {
         "document_name": "sample.txt",
         "document_type": "text/plain",
-        "content": "contenido simulado del documento",
+        "content": "hola mundo de prueba",
         "pipeline_config": {
-          "stages": ["extract"]
+          "stages": ["extract"],
+          "provider_overrides": { "extract": "slow" }
         }
       }
 
@@ -27,3 +28,6 @@ settings:
   timeout: 0
   followRedirects: true
   maxRedirects: 5
+
+docs: |-
+  Guía manual A: solo extract, variante **slow** (300–500 ms). `partial_results.by_stage.extract.text` suele incluir `sha8=`.

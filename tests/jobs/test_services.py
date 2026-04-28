@@ -10,15 +10,41 @@ from jobs.services import (
 )
 
 
-def test_normalize_pipeline_config_orders_stages():
+def test_normalize_pipeline_config_canonical_order():
     assert normalize_pipeline_config(
-        {"stages": ["enrich", "extract", "extract"]}
-    )["stages"] == ["extract", "enrich"]
+        {"stages": ["analyze", "extract"]}
+    )["stages"] == ["extract", "analyze"]
+
+
+def test_normalize_rejects_non_prefix_stages():
+    with pytest.raises(ValueError, match="prefix"):
+        normalize_pipeline_config({"stages": ["extract", "enrich"]})
+    with pytest.raises(ValueError, match="prefix"):
+        normalize_pipeline_config({"stages": ["analyze"]})
+    with pytest.raises(ValueError, match="prefix"):
+        normalize_pipeline_config({"stages": ["enrich"]})
+    with pytest.raises(ValueError, match="prefix"):
+        normalize_pipeline_config({"stages": ["analyze", "enrich"]})
 
 
 def test_normalize_rejects_invalid_stage():
     with pytest.raises(ValueError, match="Invalid stage"):
         normalize_pipeline_config({"stages": ["extract", "laser"]})
+
+
+def test_normalize_rejects_empty_stages():
+    with pytest.raises(ValueError, match="at least one stage"):
+        normalize_pipeline_config({"stages": []})
+
+
+def test_normalize_provider_overrides():
+    n = normalize_pipeline_config(
+        {
+            "stages": ["extract"],
+            "provider_overrides": {"extract": "SLOW"},
+        }
+    )
+    assert n["provider_overrides"] == {"extract": "slow"}
 
 
 @pytest.mark.django_db

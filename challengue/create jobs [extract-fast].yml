@@ -1,7 +1,7 @@
 info:
-  name: "create jobs [full] all fast"
+  name: "create jobs [extract] fast"
   type: http
-  seq: 7
+  seq: 2
 
 http:
   method: POST
@@ -16,14 +16,10 @@ http:
       {
         "document_name": "sample.txt",
         "document_type": "text/plain",
-        "content": "contenido simulado del documento",
+        "content": "hola mundo de prueba",
         "pipeline_config": {
-          "stages": ["extract", "analyze", "enrich"],
-          "provider_overrides": {
-            "extract": "fast",
-            "analyze": "fast",
-            "enrich": "fast"
-          }
+          "stages": ["extract"],
+          "provider_overrides": { "extract": "fast" }
         }
       }
 
@@ -34,4 +30,4 @@ settings:
   maxRedirects: 5
 
 docs: |-
-  `analyze`+`enrich` sin `extract` no es válido; se usa el prefijo de tres etapas.
+  Guía manual B: mismo body que slow pero **fast** (100–200 ms). Texto `extract` sin patrón `sha8=`.

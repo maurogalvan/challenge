@@ -1,7 +1,7 @@
 info:
-  name: "create jobs [analyze]"
+  name: "create jobs [extract+analyze]"
   type: http
-  seq: 2
+  seq: 3
 
 http:
   method: POST
@@ -18,7 +18,11 @@ http:
         "document_type": "text/plain",
         "content": "contenido simulado del documento",
         "pipeline_config": {
-          "stages": ["analyze"]
+          "stages": ["extract", "analyze"],
+          "provider_overrides": {
+            "extract": "fast",
+            "analyze": "fast"
+          }
         }
       }
 
@@ -27,3 +31,6 @@ settings:
   timeout: 0
   followRedirects: true
   maxRedirects: 5
+
+docs: |-
+  Prefijo válido: extract → analyze (no se puede pedir solo `analyze`).
