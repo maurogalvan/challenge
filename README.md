@@ -26,7 +26,7 @@ Microservicio que orquesta el procesamiento de documentos (extracción → anál
 
 ## Estructura del repositorio
 
-**Estado actual (bases):** proyecto Django en la raíz; carpetas faltantes (`pipeline/`, `providers/`, `events/`, etc.) se agregan al implementar el challenge.
+**Estado actual:** Django + API v1 + Celery + pipeline con `jobs/pipeline/` y `jobs/providers/` (mocks fast/slow). Pendiente principal: **eventos Kafka** (productor + consumer), resiliencia del broker y test de integración extremo a extremo.
 
 ```text
 .
@@ -47,11 +47,11 @@ Microservicio que orquesta el procesamiento de documentos (extracción → anál
 │   ├── settings_test.py        # SQLite :memory: para pytest
 │   ├── urls.py
 │   └── views.py                # /health/
-├── jobs/                      # Modelo Job, API v1, servicios, tarea Celery (stub de pipeline)
+├── jobs/                      # Modelo Job, API v1, servicios, pipeline, providers, tarea Celery
 └── tests/
 ```
 
-Pendiente: pipeline real con `providers/`, eventos Kafka, consumer, resiliencia, test de integración end-to-end, gRPC (bonus).
+Pendiente: eventos Kafka (productor en worker + consumer con group), resiliencia ante fallo del broker, al menos un test de integración completo, gRPC (bonus).
 
 **Línea roja de diseño:** la lógica vive en servicios/pipeline, no en la vista. DRF y gRPC deben ser **finos adaptadores** que llaman a los mismos use cases.
 
@@ -155,8 +155,8 @@ source .venv/bin/activate
 pytest
 ```
 
-- **Unitarios (pendiente ampliar):** sesiones, transiciones, orquestación con mocks.
-- **Integración (≥1, pendiente):** crear job → pipeline → eventos → finalización, idealmente con `docker compose` o testcontainers.
+- **Unitarios:** servicios (`normalize` de `pipeline_config`, creación de job), orquestación del pipeline con mocks (éxito y fallo con parciales).
+- **Integración (≥1, pendiente):** flujo completo con publicación y consumo de eventos (p. ej. testcontainers Kafka o compose en CI).
 
 ---
 
