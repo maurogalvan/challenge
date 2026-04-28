@@ -1,12 +1,11 @@
 info:
-  name: "create jobs [e+a+e] all slow (cancelar)"
+  name: create jobs [e+a+e] all slow (cancelar) copy
   type: http
-  seq: 9
+  seq: 10
 
 http:
   method: POST
   url: "{{api_url}}/jobs/"
-  auth: inherit
   headers:
     - name: Content-Type
       value: application/json
@@ -26,6 +25,18 @@ http:
           }
         }
       }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+
+        bru.setEnvVar("job_id", body.job_id);
+
+        // dispara automáticamente la request de cancel
+        bru.runRequest("cancel jobs");
 
 settings:
   encodeUrl: true
@@ -33,5 +44,4 @@ settings:
   followRedirects: true
   maxRedirects: 5
 
-docs: |-
-  Guía E: luego hacé GET hasta ver `processing` y POST `.../cancel/`. Tarda ~1.5s+ en worker real.
+docs: "Guía E: luego hacé GET hasta ver `processing` y POST `.../cancel/`. Tarda ~1.5s+ en worker real."
