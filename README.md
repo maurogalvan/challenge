@@ -1,8 +1,12 @@
 # Document Processing Gateway
 
-Microservicio que orquesta el procesamiento de documentos (extracción → análisis → enriquecimiento) mediante proveedores pluggables, expone API REST, ejecuta el pipeline en background y publica eventos al stream para consumidores downstream.
+Orquesta un pipeline con etapas `extract` → `analyze` → `enrich` (mock, con variante fast/slow), expone **REST** (DRF) y (bonus) **gRPC** sobre la misma capa de servicios, encola el trabajo con **Celery** y publica eventos `job.*` a **Kafka**. Incluye un consumer con **consumer group** y `commit` manual (ack vía offset).
 
-> Challenge técnico — **Python 3.10+**. Arquitectura y decisiones orientadas a claridad, testabilidad y criterio de diseño, no a producción exhaustiva.
+> Requisito del enunciado: **Python 3.10+**. En este repo, la referencia “oficial” es la imagen de Docker; si probás en el host, asegurate de no crear un venv con un Python viejo.
+
+**Cobertura frente al challenge (alto nivel):** API de jobs, pipeline con proveedores pluggables, eventos Kafka, resiliencia mínima (fallo de etapa + reintentos al publicar), tests (unit + integración E2E) y bonus gRPC.
+
+**Qué queda explícitamente como mejora futura (no exigida):** outbox transaccional / DLQ, integración con Kafka “real” en CI (testcontainers) y hardening de seguridad/ops.
 
 ---
 
@@ -26,11 +30,11 @@ Microservicio que orquesta el procesamiento de documentos (extracción → anál
 
 ## Estructura del repositorio
 
-**Estado actual:** Django + API v1 + Celery + pipeline + **Kafka** (`jobs/event_stream.py`: productor; `run_kafka_consumer` consumer con group id y commit manual). Pendiente principal: test de integración e2e con broker real y (opcional) más resiliencia ante broker caído.
+Django (API en `jobs/`, servicios en `jobs/services.py`, pipeline en `jobs/pipeline/`, proveedores en `jobs/providers/`), tareas en `jobs/tasks.py`, publicación a Kafka en `jobs/event_stream.py`, consumer con `python manage.py run_kafka_consumer`, y gRPC en `jobs/grpc_service.py` + `proto/job_gateway.proto`.
 
 ```text
 .
-├── docker-compose.local.yml   # api + worker + kafka_consumer + Postgres, Redis, ZK, Kafka
+├── docker-compose.local.yml   # api + worker + grpc + kafka_consumer + Postgres, Redis, ZK, Kafka
 ├── Dockerfile
 ├── docker/
 │   ├── defaults.env            # “.env de Docker” (red interna; con commit)
@@ -42,18 +46,23 @@ Microservicio que orquesta el procesamiento de documentos (extracción → anál
 │   └── dev.txt
 ├── manage.py
 ├── pytest.ini
+├── challengue/                 # Colección Bruno (requests de ejemplo)
 ├── config/                    # Proyecto Django: settings, urls, Celery, health
 │   ├── settings.py
 │   ├── settings_test.py        # SQLite :memory: para pytest
 │   ├── urls.py
 │   └── views.py                # /health/
-├── jobs/                      # Job, API, servicios, pipeline, providers, event_stream, Celery
+├── jobs/                      # Job, API, servicios, pipeline, providers, event_stream, gRPC, Celery
 └── tests/
 ```
 
-Pendiente: test de integración con Kafka embebido o Compose; resiliencia extra (outbox, circuit breaker); gRPC (bonus).
+**Diseño:** DRF y gRPC delegan a servicios; el pipeline y los eventos no viven en las views.
 
-**Línea roja de diseño:** la lógica vive en servicios/pipeline, no en la vista. DRF y gRPC deben ser **finos adaptadores** que llaman a los mismos use cases.
+### Probar REST con Bruno (manual)
+
+En `challengue/` dejé requests de ejemplo (crear job con distintas etapas, get, list, cancel, etc.) para no depender de curl. Abrís la carpeta en **Bruno** y usás el environment `environments/local.yml` (`api_url` = `http://localhost:8000/api/v1`). Con el `api` arriba en Docker, ejecutás los requests tal cual; no hace falta tocar el código.
+
+gRPC se prueba aparte (servidor `run_grpc_server` o contenedor `grpc`); Bruno queda solo para REST.
 
 ---
 
@@ -114,6 +123,19 @@ Variables: `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_TOPIC_JOBS`, `KAFKA_ENABLED` (en te
 
 ## Cómo levantar el proyecto
 
+### Recomendado: Docker (evita el tema “Python 3.10 en el host”)
+Si en tu máquina el `python` no es 3.10+, no pasa nada: el contenedor trae el intérprete acorde al Dockerfile / imagen. Verificá con:
+
+```bash
+docker compose -f docker-compose.local.yml exec api python --version
+```
+
+Y para testear en el mismo entorno:
+
+```bash
+docker compose -f docker-compose.local.yml exec api pytest tests/
+```
+
 ### Opción A — Todo en Docker (sin venv en el host)
 
 Levanta Postgres, Redis, Zookeeper, Kafka y la app Django. Las variables para el contorno vienen de **`docker/defaults.env`** (en el repo, pensado para la red de Compose: `db`, `redis`, `kafka:29092`, etc.); no hace falta copiar nada salvo que quieras un override.
@@ -123,7 +145,9 @@ docker compose -f docker-compose.local.yml up -d --build
 # Atajo: export COMPOSE_FILE=docker-compose.local.yml
 ```
 
-- [docker-compose.local.yml](docker-compose.local.yml): `api`, `worker`, `kafka_consumer` (`run_kafka_consumer`), Postgres, Redis, Zookeeper, Kafka; env en `docker/defaults.env`.
+Con `up` por defecto se levantan `api`, `worker`, `grpc`, `kafka_consumer`, DB, Redis, Kafka, etc. Luego: health en `http://127.0.0.1:8000/health/`, API en `http://127.0.0.1:8000/api/v1/`, y Bruno con el `api_url` de `challengue/environments/local.yml` (mismo host/puerto).
+
+- [docker-compose.local.yml](docker-compose.local.yml): `api`, `worker`, `grpc` (`run_grpc_server`), `kafka_consumer` (`run_kafka_consumer`), Postgres, Redis, Zookeeper, Kafka; env en `docker/defaults.env`.
 - **`.env.example`:** Django en el host hacia `localhost` en los puertos.
 - **Health:** [http://127.0.0.1:8000/health/](http://127.0.0.1:8000/health/) · **API:** [http://127.0.0.1:8000/api/v1/jobs/](http://127.0.0.1:8000/api/v1/jobs/)
 - Contenedor `api`: migraciones vía entrypoint; volumen `.:/app`.
@@ -132,11 +156,14 @@ docker compose -f docker-compose.local.yml up -d --build
 
 ### Opción B — Código en el host (venv + Postgres/Redis en Docker)
 
-**Requisito:** Python **3.10+** (alinear con `.python-version` vía pyenv).
+Solo si tenés **Python 3.10+** instalado en el host. Si al correr `python3.10 -m venv` te falla, volvé a la opción Docker (arriba).
+
+**Requisito:** Python **3.10+** (alinear con `.python-version` vía pyenv / Homebrew / asdf, según tu entorno).
 
 ```bash
 python3.10 -m venv .venv
 source .venv/bin/activate
+python --version
 pip install -r requirements/dev.txt
 cp .env.example .env
 docker compose -f docker-compose.local.yml up -d db redis kafka
@@ -144,38 +171,57 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-- Con Docker, el `worker` ejecuta Celery. Para eventos: mismo Compose incluye `kafka_consumer` o, en el host, `KAFKA_BOOTSTRAP_SERVERS=localhost:9092` y `python manage.py run_kafka_consumer` en otra terminal.
+- Con Docker, el `worker` ejecuta Celery. Para eventos: `kafka_consumer`. Para bonus gRPC: servicio `grpc` en `:50051` o, en host, `python manage.py run_grpc_server`.
+
+#### Verificación rápida de versión (obligatoria)
+
+```bash
+python --version
+# esperado: Python 3.10.x o mayor
+```
+
+#### Si quedó en 3.9.x, recrear `.venv`
+
+```bash
+deactivate  # si estás en un venv activo
+rm -rf .venv
+python3.10 -m venv .venv
+source .venv/bin/activate
+python --version
+pip install -r requirements/dev.txt
+```
 
 ---
 
 ## Tests
 
-Usa `config.settings_test` (SQLite en memoria) — no requiere Docker en cada corrida.
+Usa `config.settings_test` (SQLite en memoria) — no requiere Docker en cada corrida, pero en Docker se ejecuta igual.
+
+**Desde venv local (3.10+):**
 
 ```bash
 source .venv/bin/activate
 pytest
 ```
 
-- **Unitarios:** servicios, pipeline, **envelope de eventos** y publicación con Kafka mockeado.
-- **Integración (≥1, pendiente):** un flujo con broker real (p. ej. testcontainers Kafka o job en CI contra Compose).
+**Desde contenedor (recomendado si el host no tiene 3.10+):**
+
+```bash
+docker compose -f docker-compose.local.yml exec api pytest tests/
+```
+
+- **Unitarios + integración:** servicios, pipeline, eventos, flujo E2E, gRPC, consumer (commit) con mocks. Opcional: broker Kafka en CI.
+
+---
+## Bonus gRPC (implementado)
+
+- **Servicio:** `DocumentProcessingGateway` en `proto/job_gateway.proto`.
+- **Métodos:** `CreateJob`, `GetJob`, `ListJobs` (con filtro `status`) y `CancelJob`.
+- **Server:** `python manage.py run_grpc_server` (host/port por `GRPC_HOST` y `GRPC_PORT`).
+- **Diseño:** gRPC usa la misma capa de negocio (`create_job`, `get_job_by_id`, `list_jobs`, `request_cancel_job`, task Celery), sin duplicar lógica de dominio.
 
 ---
 
-## Plan de entrega en 8 horas (referencia)
-
-Orden sugerido para avanzar rápido y con commits con historia legible:
-
-1. **Cimientos:** Compose (Postgres + Redis), Django + DRF, modelo `Job` + 4 endpoints mínimos (aunque el worker sea no-op).
-2. **Abstracción de proveedores** + 2 implementaciones (rápida/lenta) y `pipeline_config`.
-3. **Celery** ejecuta pipeline, persiste resultados parciales, maneja fallo de etapa.
-4. **Kafka** productor de eventos + **consumer** con group id + logs.
-5. **Tests** unit + 1 integración; README actualizado (resiliencia, diagrama).
-6. **Si sobra tiempo:** gRPC, CI mínima, pulido de seguridad en README (secretos, validación).
-
-Ajustar tiempos según bloqueos; el README puede marcarse con “hecho / pendiente” al final de cada bloque (opcional, breve).
-
----
 
 ## Diagrama (arquitectura)
 

@@ -87,6 +87,25 @@ services:
     volumes:
       - .:/app
 
+  grpc:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - ./docker/defaults.env
+    command: ["python", "manage.py", "run_grpc_server"]
+    ports:
+      - "50051:50051"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    volumes:
+      - .:/app
+
   kafka_consumer:
     build:
       context: .

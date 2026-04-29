@@ -111,3 +111,6 @@ KAFKA_ENABLED = os.environ.get("KAFKA_ENABLED", "true").lower() in ("1", "true",
 KAFKA_CONSUMER_GROUP = os.environ.get("KAFKA_CONSUMER_GROUP", "downstream-processors")
 # Identificador para logs del broker (productor y consumer distinguen instancias)
 KAFKA_CLIENT_ID_PREFIX = os.environ.get("KAFKA_CLIENT_ID_PREFIX", "gateway")
+
+GRPC_HOST = os.environ.get("GRPC_HOST", "0.0.0.0")
+GRPC_PORT = int(os.environ.get("GRPC_PORT", "50051"))

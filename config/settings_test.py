@@ -18,3 +18,5 @@ CELERY_TASK_EAGER_PROPAGATES = True
 
 KAFKA_BOOTSTRAP_SERVERS = "localhost:0"
 KAFKA_ENABLED = False  # tests sin broker; publicación es no-op
+GRPC_HOST = "127.0.0.1"
+GRPC_PORT = 50061
