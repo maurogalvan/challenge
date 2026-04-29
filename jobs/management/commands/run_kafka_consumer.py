@@ -38,11 +38,12 @@ class Command(BaseCommand):
                 et = data.get("event_type", "?")
                 jid = data.get("job_id", "?")
                 logger.info(
-                    "downstream event=%s job_id=%s partition=%s offset=%s",
+                    "consumer_message event_type=%s job_id=%s partition=%s offset=%s group_id=%s",
                     et,
                     jid,
                     message.partition,
                     message.offset,
+                    group,
                 )
                 self.stdout.write(
                     f"event={et} job_id={jid} offset={message.offset}\n"

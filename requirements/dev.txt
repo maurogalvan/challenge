@@ -3,3 +3,5 @@ pytest>=7.4
 pytest-django>=4.5
 factory-boy>=3.3
 grpcio-tools>=1.80,<2
+testcontainers[kafka]>=4.7
+packaging>=23

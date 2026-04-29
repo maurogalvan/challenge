@@ -81,9 +81,23 @@ def publish_job_event(
                 topic, key=str(job_id).encode("utf-8"), value=envelope
             )
             fut.get(timeout=15)
+            logger.info(
+                "event_published topic=%s event_type=%s job_id=%s attempt=%s",
+                topic,
+                event_type,
+                job_id,
+                attempt + 1,
+            )
             return True
         except Exception:
             if attempt < MAX_SEND_RETRIES - 1:
+                logger.warning(
+                    "event_publish_retry topic=%s event_type=%s job_id=%s attempt=%s",
+                    topic,
+                    event_type,
+                    job_id,
+                    attempt + 1,
+                )
                 time.sleep(RETRY_BACKOFF_S[min(attempt, len(RETRY_BACKOFF_S) - 1)])
             else:
                 logger.exception(
