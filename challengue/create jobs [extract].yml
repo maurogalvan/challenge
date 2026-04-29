@@ -1,0 +1,33 @@
+info:
+  name: "create jobs [extract] slow"
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{api_url}}/jobs/"
+  auth: inherit
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "document_name": "sample.txt",
+        "document_type": "text/plain",
+        "content": "hola mundo de prueba",
+        "pipeline_config": {
+          "stages": ["extract"],
+          "provider_overrides": { "extract": "slow" }
+        }
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Guía manual A: solo extract, variante **slow** (300–500 ms). `partial_results.by_stage.extract.text` suele incluir `sha8=`.

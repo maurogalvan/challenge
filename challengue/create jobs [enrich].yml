@@ -1,0 +1,37 @@
+info:
+  name: "create jobs [full] enrich slow"
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{api_url}}/jobs/"
+  auth: inherit
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "document_name": "sample.txt",
+        "document_type": "text/plain",
+        "content": "contenido simulado del documento",
+        "pipeline_config": {
+          "stages": ["extract", "analyze", "enrich"],
+          "provider_overrides": {
+            "extract": "fast",
+            "analyze": "fast",
+            "enrich": "slow"
+          }
+        }
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  No se puede `stages: ["enrich"]` solo; hay que incluir extract y analyze antes (prefijo completo).

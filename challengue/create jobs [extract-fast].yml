@@ -1,0 +1,33 @@
+info:
+  name: "create jobs [extract] fast"
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{api_url}}/jobs/"
+  auth: inherit
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "document_name": "sample.txt",
+        "document_type": "text/plain",
+        "content": "hola mundo de prueba",
+        "pipeline_config": {
+          "stages": ["extract"],
+          "provider_overrides": { "extract": "fast" }
+        }
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Guía manual B: mismo body que slow pero **fast** (100–200 ms). Texto `extract` sin patrón `sha8=`.

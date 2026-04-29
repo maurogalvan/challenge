@@ -1,0 +1,37 @@
+info:
+  name: "create jobs [e+a+e] (guía C)"
+  type: http
+  seq: 8
+
+http:
+  method: POST
+  url: "{{api_url}}/jobs/"
+  auth: inherit
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "document_name": "a.txt",
+        "document_type": "text/plain",
+        "content": "alpha beta gamma",
+        "pipeline_config": {
+          "stages": ["extract", "analyze", "enrich"],
+          "provider_overrides": {
+            "extract": "fast",
+            "analyze": "fast",
+            "enrich": "slow"
+          }
+        }
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Guía manual C: las tres etapas; comprobar `partial_results.by_stage` (extract text, analyze con `variant: fast`, enrich con `metadata.variant: slow`).

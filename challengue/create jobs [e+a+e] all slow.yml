@@ -1,0 +1,44 @@
+info:
+  name: create jobs [e+a+e] all slow
+  type: http
+  seq: 9
+
+http:
+  method: POST
+  url: "{{api_url}}/jobs/"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "document_name": "slow-cancel.txt",
+        "document_type": "text/plain",
+        "content": "texto largo para dar tiempo a cancelar antes de que termine",
+        "pipeline_config": {
+          "stages": ["extract", "analyze", "enrich"],
+          "provider_overrides": {
+            "extract": "slow",
+            "analyze": "slow",
+            "enrich": "slow"
+          }
+        }
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+
+        bru.setEnvVar("job_id", body.job_id);
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: "Guía E: luego hacé GET hasta ver `processing` y POST `.../cancel/`. Tarda ~1.5s+ en worker real."

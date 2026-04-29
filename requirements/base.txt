@@ -1,0 +1,13 @@
+# Python 3.10+
+Django>=4.2,<5.1
+djangorestframework>=3.14
+psycopg2-binary>=2.9
+python-dotenv>=1.0
+celery[redis]>=5.3
+
+# Event streaming (Apache Kafka: producer + consumer)
+kafka-python>=2.0,<3
+
+# Bonus gRPC
+grpcio>=1.80,<2
+protobuf>=6.31,<7

@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package jobgateway;
+
+message PipelineConfig {
+  repeated string stages = 1;
+  map<string, string> provider_overrides = 2;
+}
+
+message CreateJobRequest {
+  string document_name = 1;
+  string document_type = 2;
+  string content = 3;
+  PipelineConfig pipeline_config = 4;
+}
+
+message GetJobRequest {
+  string job_id = 1;
+}
+
+message ListJobsRequest {
+  string status = 1;
+}
+
+message ListJobsResponse {
+  repeated JobResponse jobs = 1;
+}
+
+message CancelJobRequest {
+  string job_id = 1;
+}
+
+message CancelJobResponse {
+  bool ok = 1;
+  JobResponse job = 2;
+  string detail = 3;
+}
+
+message JobResponse {
+  string job_id = 1;
+  string status = 2;
+  string document_name = 3;
+  string document_type = 4;
+  string content = 5;
+  string pipeline_config_json = 6;
+  string partial_results_json = 7;
+  string error_message = 8;
+  string created_at = 9;
+  string updated_at = 10;
+}
+
+service DocumentProcessingGateway {
+  rpc CreateJob(CreateJobRequest) returns (JobResponse);
+  rpc GetJob(GetJobRequest) returns (JobResponse);
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
+  rpc CancelJob(CancelJobRequest) returns (CancelJobResponse);
+}
