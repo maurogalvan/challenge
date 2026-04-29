@@ -1,75 +1,109 @@
-# Document Processing Gateway
+Document Processing Gateway
 
-Gateway en **Django + DRF**: pipeline `extract` → `analyze` → `enrich` (mocks fast/slow), tareas con **Celery** + **Redis**, estado en **Postgres**, eventos `job.*` en **Kafka** (consumer con group + commit manual), y bonus **gRPC** apoyado en los mismos servicios que REST.
+Este repo es mi solución al challenge de backend.
 
-**Requisito del enunciado: Python 3.10+.** En la práctica: usá el **contenedor** (`api` trae 3.10). En el host, no compiles un venv con 3.9.
+La idea es bastante directa: recibo un documento, lo paso por un pipeline (extract → analyze → enrich) y voy publicando eventos de lo que pasa en cada etapa para que otros servicios puedan reaccionar.
 
----
+Qué implementé
+API REST para crear, consultar, listar y cancelar jobs
+Pipeline configurable por request (no siempre tienen que correr todas las etapas)
+Proveedores mock (fast y slow) para simular latencias distintas
+Procesamiento async con Celery + Redis
+Publicación de eventos en Kafka (job.*)
+Consumer que lee esos eventos (simulando un downstream)
+Bonus: interfaz gRPC reutilizando la misma lógica que REST
+Decisiones rápidas (por si suma contexto)
+Django + DRF: cómodo para armar rápido la API y estructurar bien el dominio
+Celery + Redis: para desacoplar el pipeline y manejar bien las tareas async
+Kafka: porque necesitaba persistencia de eventos, consumer groups y manejo de offsets (era lo que pedía el challenge)
+Mocks fast/slow: para poder ver el comportamiento async sin depender de servicios reales
+Cómo levantarlo
 
-## Cómo levantarlo (recomendado: Docker)
+Recomiendo usar Docker así no hay problemas de versiones (usa Python 3.10 como pide el challenge):
 
-```bash
 docker compose -f docker-compose.local.yml up -d --build
-```
 
-Quedan: `api` (:8000), `worker`, `grpc` (:50051), `kafka_consumer`, Postgres, Redis, Kafka. Variables: `docker/defaults.env`.
+Levanta todo:
 
-- Health: `http://127.0.0.1:8000/health/`
-- API: `http://127.0.0.1:8000/api/v1/`
-- Python en contenedor: `docker compose -f docker-compose.local.yml exec api python --version`
+API → http://localhost:8000
+gRPC → puerto 50051
+worker (Celery)
+Kafka + consumer
+Postgres
+Redis
 
-**Bruno:** carpeta `challengue/`, environment `environments/local.yml` (`api_url` → `http://localhost:8000/api/v1`). Son requests que fui dejando para probar create/list/get/cancel y distintas combinaciones de etapas. gRPC se prueba aparte (`run_grpc_server` o servicio `grpc`).
+Para chequear rápido:
 
-**Humo Kafka en compose (sin pytest):**
+Health → http://localhost:8000/health/
+API base → http://localhost:8000/api/v1/
+API
 
-```bash
-docker compose -f docker-compose.local.yml exec api python scripts/smoke_kafka_compose.py
-```
+Base: /api/v1/
 
-**Tests en contenedor (perfil recomendado):**
+Endpoints:
 
-```bash
-docker compose -f docker-compose.local.yml exec api sh -lc "DJANGO_SETTINGS_MODULE=config.settings_test python -m pytest tests/"
-```
+POST /jobs/ → crea un job
+GET /jobs/ → lista (permite filtrar por status)
+GET /jobs/{id}/ → detalle + resultados parciales
+POST /jobs/{id}/cancel/ → cancela si sigue en curso
+Nota sobre el pipeline
 
-**Perfiles de test:**
+Las etapas siguen este orden:
 
-- Rápido (sin integración pesada):  
-  `docker compose -f docker-compose.local.yml exec api sh -lc "DJANGO_SETTINGS_MODULE=config.settings_test python -m pytest tests/ -m 'not integration'"`
-- Completo (incluye integración Kafka real vía testcontainers):  
-  `docker compose -f docker-compose.local.yml exec api sh -lc "DJANGO_SETTINGS_MODULE=config.settings_test python -m pytest tests/"`
-- Si querés saltear integración Kafka en el completo:  
-  `docker compose -f docker-compose.local.yml exec api sh -lc "SKIP_KAFKA_INTEGRATION=1 DJANGO_SETTINGS_MODULE=config.settings_test python -m pytest tests/"`
+extract → analyze → enrich
 
----
+Se pueden ejecutar parcialmente, pero siempre respetando ese orden (no se puede saltear etapas intermedias).
 
-## Stack (resumido)
+Eventos
 
-| Qué | Tecnología |
-|-----|------------|
-| API | Django, DRF |
-| Dominio | `jobs/services.py`, `jobs/pipeline/` |
-| Async | Celery, Redis |
-| DB | PostgreSQL |
-| Eventos | Kafka (`jobs/event_stream.py`, consumer `run_kafka_consumer`) |
-| Bonus | gRPC (`proto/job_gateway.proto`, `run_grpc_server`) |
-| Tests | pytest, pytest-django; integración E2E + opcional testcontainers Kafka |
+Voy publicando eventos en Kafka a medida que avanza el pipeline:
 
-**Kafka vs Redis:** Redis = cola de Celery. Kafka = log de eventos con retención, grupos y offsets.
+job.created
+job.stage_started
+job.stage_completed
+job.completed
+job.failed
+job.cancelled
 
----
+El consumer que incluí simplemente los lee (con consumer group) y los loguea, simulando otro servicio.
 
-## API REST (v1)
+gRPC (bonus)
 
-Base: `/api/v1/`
+Implementé:
 
-| Método | Ruta | Notas |
-|--------|------|--------|
-| POST | `/jobs/` | `pipeline_config.stages` = prefijo contiguo de `extract` → `analyze` → `enrich`; `provider_overrides` solo en etapas listadas |
-| GET | `/jobs/` | `?status=` opcional |
-| GET | `/jobs/{id}/` | Detalle + `partial_results` |
-| POST | `/jobs/{id}/cancel/` | 409 si ya terminó |
+CreateJob
+GetJob
+ListJobs
+CancelJob
 
+La lógica es la misma que REST (no hay duplicación).
+
+Para levantarlo:
+
+python manage.py run_grpc_server
+Resiliencia
+Si falla una etapa, se guardan los resultados anteriores y el job queda en failed
+La publicación a Kafka tiene retry con backoff
+No implementé outbox/DLQ para no irme de scope, pero en un sistema real lo agregaría
+Tests
+
+Corrí tests unitarios y de integración (incluyendo flujo completo).
+
+Desde Docker:
+
+docker compose -f docker-compose.local.yml exec api sh -lc "DJANGO_SETTINGS_MODULE=config.settings_test pytest"
+
+También dejé un test de integración con Kafka real usando testcontainers.
+
+Extra
+
+Dejé una colección en Bruno (challenge/) con requests para probar rápido los endpoints y distintos escenarios del pipeline.
+
+Cierre
+
+Intenté mantenerlo simple pero cubriendo todo lo que pedía el challenge: pipeline configurable, async, eventos y algo de resiliencia.
+
+Cualquier cosa que quieran que explique o profundice, cero problema
 Eventos: `job.created`, `job.stage_*`, `job.completed` / `job.failed` / `job.cancelled` (ver `jobs/event_stream.py`).
 
 ---
@@ -108,4 +142,8 @@ Servicio `DocumentProcessingGateway` en `proto/job_gateway.proto`: `CreateJob`, 
 
 ## Entrega
 
-Repositorio git, este README, tests ejecutables, y el mail al contacto del enunciado.
+Este repositorio incluye:
+
+1. Implementación del gateway con API REST, pipeline, eventos Kafka y bonus gRPC.
+2. Guía de ejecución con Docker Compose.
+3. Tests automatizados para validar los flujos principales.
