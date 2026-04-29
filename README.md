@@ -1,5 +1,149 @@
 # Document Processing Gateway
 
+Este repo implementa el challenge de backend con:
+
+- API REST en Django + DRF para crear/consultar/listar/cancelar jobs.
+- Pipeline `extract -> analyze -> enrich` con proveedores mock fast/slow.
+- Ejecucion async con Celery + Redis.
+- Eventos `job.*` en Kafka + consumer con consumer group y commit manual.
+- Bonus gRPC (`CreateJob`, `GetJob`, `ListJobs`, `CancelJob`) reutilizando la misma capa de servicios.
+
+> Requisito del challenge: Python 3.10+.  
+> En este proyecto recomiendo correr todo con Docker Compose (ya trae el entorno correcto).
+
+---
+
+## Levantar el proyecto (desde cero)
+
+```bash
+docker compose -f docker-compose.local.yml up -d --build
+```
+
+Con eso quedan levantados: `api` (8000), `worker`, `grpc` (50051), `kafka_consumer`, `db`, `redis`, `kafka`.
+
+Chequeos rapidos:
+
+- Health: `http://127.0.0.1:8000/health/`
+- API base: `http://127.0.0.1:8000/api/v1/`
+- Python del contenedor: `docker compose -f docker-compose.local.yml exec api python --version`
+
+---
+
+## Probar endpoints REST con Bruno
+
+Use Bruno para dejar requests de prueba en `challengue/`.
+
+- Coleccion: `challengue/opencollection.yml`
+- Environment local: `challengue/environments/local.yml`
+- `api_url` ya apunta a `http://localhost:8000/api/v1`
+
+Ahi estan los escenarios de create/get/list/cancel y variantes de pipeline.
+
+---
+
+## Test rapido de Kafka en Compose
+
+Script de humo (publica y valida consumo de un evento):
+
+```bash
+docker compose -f docker-compose.local.yml exec api python scripts/smoke_kafka_compose.py
+```
+
+Si todo va bien devuelve algo como: `ok job.created <uuid>`.
+
+---
+
+## Tests
+
+### Perfil recomendado (Docker + settings de test)
+
+```bash
+docker compose -f docker-compose.local.yml exec api sh -lc "DJANGO_SETTINGS_MODULE=config.settings_test python -m pytest tests/"
+```
+
+### Perfiles utiles
+
+- Rapido (sin integraciones pesadas):
+```bash
+docker compose -f docker-compose.local.yml exec api sh -lc "DJANGO_SETTINGS_MODULE=config.settings_test python -m pytest tests/ -m 'not integration'"
+```
+
+- Completo (incluye test de integracion Kafka real con testcontainers):
+```bash
+docker compose -f docker-compose.local.yml exec api sh -lc "DJANGO_SETTINGS_MODULE=config.settings_test python -m pytest tests/"
+```
+
+- Completo pero salteando Kafka real:
+```bash
+docker compose -f docker-compose.local.yml exec api sh -lc "SKIP_KAFKA_INTEGRATION=1 DJANGO_SETTINGS_MODULE=config.settings_test python -m pytest tests/"
+```
+
+---
+
+## API REST
+
+Base: `/api/v1/`
+
+- `POST /jobs/`
+- `GET /jobs/` (filtro opcional `?status=`)
+- `GET /jobs/{job_id}/`
+- `POST /jobs/{job_id}/cancel/`
+
+Regla importante de stages: se aceptan prefijos contiguos del orden
+`extract -> analyze -> enrich`.
+
+---
+
+## gRPC (bonus)
+
+Proto: `proto/job_gateway.proto`  
+Servicio: `DocumentProcessingGateway`
+
+Metodos implementados:
+
+- `CreateJob`
+- `GetJob`
+- `ListJobs`
+- `CancelJob`
+
+Comando para levantar server gRPC:
+
+```bash
+python manage.py run_grpc_server
+```
+
+---
+
+## Resiliencia aplicada
+
+- Si falla una etapa del pipeline, se conservan parciales y el job queda `failed`.
+- Publicacion a Kafka con retry + backoff corto.
+- Trade-off documentado: no hay outbox/DLQ (fuera de alcance del challenge).
+
+---
+
+## Stack
+
+- Django, DRF
+- Celery, Redis
+- PostgreSQL
+- Kafka
+- gRPC (grpcio + protobuf)
+- pytest / pytest-django
+
+---
+
+## Entrega
+
+Incluye:
+
+1. Repositorio git.
+2. Este README con pasos para levantar/probar.
+3. Tests ejecutables.
+
+Luego notificar por mail al contacto del enunciado.
+# Document Processing Gateway
+
 Gateway en **Django + DRF**: pipeline `extract` → `analyze` → `enrich` (mocks fast/slow), tareas con **Celery** + **Redis**, estado en **Postgres**, eventos `job.*` en **Kafka** (consumer con group + commit manual), y bonus **gRPC** apoyado en los mismos servicios que REST.
 
 **Requisito del enunciado: Python 3.10+.** En la práctica: usá el **contenedor** (`api` trae 3.10). En el host, no compiles un venv con 3.9.
